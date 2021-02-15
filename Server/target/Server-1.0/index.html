@@ -1,0 +1,59 @@
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,minimum-scale=1.0,maximum-scale=2.0,user-scalable=1"/>
+    <title>加入房间</title>
+
+    <script src="script/jquery.min.js"></script>
+</head>
+<body>
+<div>
+    <fieldset>
+        <legend>创建房间</legend>
+        <label>房间名称:</label>
+        <input type="text" id="roomName"><br>
+        <label>视频连接:</label>
+        <input type="text" id="videoUrl"><br>
+        <input style="width: 4em;height: 2em;  margin-top:1em" type="button" value="提交" onclick="createRoom()">
+    </fieldset>
+</div>
+<div>
+    <fieldset>
+        <legend>加入房间</legend>
+        <label>房间id:</label>
+        <input type="text" id="roomId"><br>
+        <input style="width: 4em;height: 2em; margin-top:1em" type="button" value="提交" onclick="joinRoom()">
+    </fieldset>
+</div>
+
+<script>
+
+    //创建房间
+    function createRoom() {
+        var data = {
+            room: $("#roomName").val(),
+            url: $("#videoUrl").val()
+        };
+        var httpRequest = new XMLHttpRequest();
+        httpRequest.open('POST', 'create_room', true);
+        httpRequest.send(JSON.stringify(data));
+        httpRequest.onreadystatechange = function () {
+            if (httpRequest.readyState == 4 && httpRequest.status == 200) {
+                var json = JSON.parse(httpRequest.responseText);
+                if (json['success'] == false) {
+                    alert(json['msg']);
+                } else {
+                    self.location = "play.html?id=" + json['id'];
+                }
+            }
+        };
+    }
+
+    //加入房间
+    function joinRoom() {
+        self.location = "play.html?id=" + $("#roomId").val();
+    }
+
+</script>
+</body>
+</html>

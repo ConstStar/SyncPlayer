@@ -5,7 +5,19 @@
     <meta name="viewport"
           content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>一起看</title>
+    <title>正在播放</title>
+    <style>
+        video::-webkit-media-controls {
+            display: none !important;
+        }
+
+        .video-full {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+        }
+    </style>
 
     <script type="text/javascript" src="ckplayer/ckplayer.js" charset="UTF-8"></script>
     <script src="script/jquery.min.js"></script>

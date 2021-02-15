@@ -18,9 +18,9 @@ import java.util.TimerTask;
 import java.util.function.Function;
 
 public class Video {
-    String id;
+    String roomId;
     String url;
-    String home;//房间名称
+    String roomName;//房间名称
 
     JFrame videoFrame; //JFrame 实例
     Container containerPane;//界面容器
@@ -50,14 +50,15 @@ public class Video {
 
     class Websock extends WebSocketClient {
 
-        boolean isRecvTime = true; //是否可以接受
+        boolean isRecvTime = true; //是否可以接受时间调整
         public boolean isRecvOneTime = true;//是否接受到第一个时间
 
-        //状态
+        //事件
         public static final int EVENT_PLAY = 0;       //播放
         public static final int EVENT_PAUSE = 1;      //暂停
         public static final int EVENT_STOP = 2;       //停止
         public static final int EVENT_LOAD = 3;       //加载
+        public static final int EVENT_SEEK = 4;       //调整时间
 
         //服务器消息
         private final int MESSAGE_INFO = 1;
@@ -65,8 +66,7 @@ public class Video {
         private final int MESSAGE_ERROR = 3;
 
         //客户端消息
-        public final int MESSAGE_UPDATETIME = 11; //更新时间
-        public final int MESSAGE_EVENT = 12; //事件
+        public final int MESSAGE_EVENT = 11; //事件
 
 
         public Websock(String serverUri) {
@@ -84,7 +84,7 @@ public class Video {
                 public void run() {
                     isRecvOneTime = false;
                 }
-            }, 2000);
+            }, 2*1000);
         }
 
         @Override
@@ -107,6 +107,40 @@ public class Video {
                 case MESSAGE_EVENT: {
                     Integer event = json.getInteger("event");
                     switch (event) {
+                        case EVENT_SEEK:
+                            long time = playerStatus.time();
+
+                            boolean isChangeTime = json.getBoolean("isChangeTime");
+                            int retime = json.getInteger("time");
+                            int timeAbs = Math.abs(retime - (int) time);
+
+                            //第一次接收时间
+                            if (isRecvOneTime) {
+                                playerControls.setTime(retime);
+                                isRecvOneTime = false;
+                            }
+                            //时间被调整
+                            else if (isChangeTime) {
+                                //调整时间大小大于1秒才进行调整
+                                if (timeAbs > 1*1000)
+                                    playerControls.setTime(retime);
+                            } else {
+                                //如果正在发送时间消息 而且收到的并非强制调整时间 则不作处理
+                                if (!isRecvTime) {
+                                    break;
+                                }
+
+                                if (timeAbs > 2 * 60 * 1000) {
+                                    //延迟大于2分钟直接修改播放进度
+                                    playerControls.setTime(retime);
+                                } else if (timeAbs > 1 * 1000) {
+                                    //延迟大于1秒自动提速
+                                    playerControls.setRate(1.1f);
+                                } else {
+                                    playerControls.setRate(1.0f);
+                                }
+                            }
+                            break;
                         case EVENT_PLAY:
                             playerControls.setPause(false);
                             break;
@@ -116,38 +150,6 @@ public class Video {
                         case EVENT_STOP:
                             playerControls.stop();
                             break;
-                    }
-                    break;
-                }
-                case MESSAGE_UPDATETIME: {
-                    long time = playerStatus.time();
-
-                    boolean isChangeTime = json.getBoolean("isChangeTime");
-                    int retime = json.getInteger("time");
-
-                    //第一次接收时间
-                    if (isRecvOneTime) {
-                        playerControls.setTime(retime);
-                        isRecvOneTime = false;
-                    }
-                    //时间被调整
-                    else if (isChangeTime) {
-                        playerControls.setTime(retime);
-                    } else {
-                        //如果正在发送时间消息 而且收到的并非强制调整时间 则不作处理
-                        if (!isRecvTime) {
-                            break;
-                        }
-
-                        if (retime - time > 2 * 60 * 100) {
-                            //延迟大于2分钟直接修改播放进度
-                            playerControls.setTime(retime);
-                        } else if (retime - time > 1 * 100) {
-                            //延迟大于2秒自动提速
-                            playerControls.setRate(1.1f);
-                        } else {
-                            playerControls.setRate(1.0f);
-                        }
                     }
                     break;
                 }
@@ -205,7 +207,8 @@ public class Video {
             try {
                 long time = playerStatus.time();
                 JSONObject json = new JSONObject();
-                json.put("type", MESSAGE_UPDATETIME);
+                json.put("type", MESSAGE_EVENT);
+                json.put("event", EVENT_SEEK);
                 json.put("time", time);
                 json.put("isChangeTime", isChangeTime);
 
@@ -381,7 +384,7 @@ public class Video {
 
         //界面容器
         containerPane = videoFrame.getContentPane();
-        containerPane.setLayout(new BorderLayout(0,0));
+        containerPane.setLayout(new BorderLayout(0, 0));
 
         //实例化视频容器
         videoPane = new JPanel();
@@ -595,7 +598,7 @@ public class Video {
             }
 
             //加入房间
-            public boolean joinHome() {
+            public boolean joinRoom() {
 
                 try {
                     OkHttpClient client = new OkHttpClient();
@@ -604,12 +607,12 @@ public class Video {
 
                     //body
                     JSONObject json = new JSONObject();
-                    json.put("id", id);
+                    json.put("id", roomId);
 
                     RequestBody body = RequestBody.create(JSON, json.toJSONString());
 
                     Request req = new Request.Builder()
-                            .url(Config.ServerUrl_getHome)
+                            .url(Config.ServerUrl_getRoom)
                             .post(body)
                             .build();
                     //同步请求
@@ -621,7 +624,7 @@ public class Video {
                     JSONObject resJson = JSONObject.parseObject(res);
                     if (resJson.getBoolean("success")) {
                         url = resJson.getString("url");
-                        home = resJson.getString("home");
+                        roomName = resJson.getString("room");
                     } else {
                         throw new Exception(resJson.getString("msg"));
                     }
@@ -635,7 +638,7 @@ public class Video {
             }
 
             //创建房间
-            public boolean createHome() {
+            public boolean createRoom() {
 
                 try {
                     OkHttpClient client = new OkHttpClient();
@@ -645,12 +648,12 @@ public class Video {
                     //body
                     JSONObject json = new JSONObject();
                     json.put("url", url);
-                    json.put("home", home);
+                    json.put("room", roomName);
 
                     RequestBody body = RequestBody.create(JSON, json.toJSONString());
 
                     Request req = new Request.Builder()
-                            .url(Config.ServerUrl_createHome)
+                            .url(Config.ServerUrl_createRoom)
                             .post(body)
                             .build();
                     //同步请求
@@ -661,7 +664,7 @@ public class Video {
                     String res = response.body().string();
                     JSONObject resJson = JSONObject.parseObject(res);
                     if (resJson.getBoolean("success")) {
-                        id = resJson.getString("id");
+                        roomId = resJson.getString("id");
                     } else {
                         throw new Exception(resJson.getString("msg"));
                     }
@@ -689,20 +692,20 @@ public class Video {
             }
 
             public void inputId() {
-                id = JOptionPane.showInputDialog(null, "请输入房间id", "加入房间", JOptionPane.INFORMATION_MESSAGE);
-                if (id == null) {
+                roomId = JOptionPane.showInputDialog(null, "请输入房间id", "加入房间", JOptionPane.INFORMATION_MESSAGE);
+                if (roomId == null) {
                     start();
                     return;
                 }
 
                 //加入房间
-                if (!joinHome()) {
+                if (!joinRoom()) {
                     JOptionPane.showMessageDialog(null, "加入房间失败", "错误", JOptionPane.ERROR_MESSAGE);
                     start();
                     return;
                 }
 
-                JOptionPane.showMessageDialog(null, "即将加入房间“" + home + "”", "确认房间信息", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(null, "即将加入房间“" + roomName + "”", "确认房间信息", JOptionPane.INFORMATION_MESSAGE);
             }
 
             public void inputUrl() {
@@ -711,20 +714,20 @@ public class Video {
                     start();
                     return;
                 }
-                home = JOptionPane.showInputDialog(null, "请输入房间名", "创建房间", JOptionPane.INFORMATION_MESSAGE);
-                if (home == null) {
+                roomName = JOptionPane.showInputDialog(null, "请输入房间名", "创建房间", JOptionPane.INFORMATION_MESSAGE);
+                if (roomName == null) {
                     start();
                     return;
                 }
 
                 //创建房间
-                if (!createHome()) {
+                if (!createRoom()) {
                     JOptionPane.showMessageDialog(null, "创建房间失败", "错误", JOptionPane.ERROR_MESSAGE);
                     start();
                     return;
                 }
 
-                JOptionPane.showInputDialog(null, "为您分配的房间id为", id);
+                JOptionPane.showInputDialog(null, "为您分配的房间id为", roomId);
             }
         }
 
@@ -733,10 +736,10 @@ public class Video {
         s.start();
 
         //设置标题
-        videoFrame.setTitle(home);
+        videoFrame.setTitle(roomName);
         //显示界面
         setVisible(true);
-        websock = new Websock(Config.webSocktUrl_relayMessage + id);
+        websock = new Websock(Config.webSocktUrl_relayMessage + roomId);
         //播放视频
         playerMedia.play(url);
 
